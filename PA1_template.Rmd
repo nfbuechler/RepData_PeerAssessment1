@@ -1,25 +1,155 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+<<<<<<< HEAD
+#Reproducible Research Assignment 1
+##Author: Nicole Buechler
+##Date: 03/08/2015
 
+###Data
 
-## Loading and preprocessing the data
+The data for this assignment can be downloaded from the course web site:
 
+Dataset: Activity monitoring data [52K]
+The variables included in this dataset are:
 
+steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
 
-## What is mean total number of steps taken per day?
+date: The date on which the measurement was taken in YYYY-MM-DD format
 
+interval: Identifier for the 5-minute interval in which measurement was taken
 
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
 
-## What is the average daily activity pattern?
+##Loading and preprocessing the data
+###Show any code that is needed to  
+Load the data (i.e. read.csv()):
+originally I had all of the unzipping code in my markdown file, but markdown will not execute making the html properly so I had to removed it. the code looks like this:
+```{r}
+temp <- tempfile()
+download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",temp)
+unzip(temp)
+data <- read.csv("activity.csv")
+unlink(temp)
+```
 
+Process/transform the data (if necessary) into a format suitable for your analysis:
+first, we need to explore the format that the data variable is in. our graphs will not work without ensuring that the date is being read properly
+```{r}
+class(data$date)
+```
+since date is a factor, we need to change it to time. but first it needs to be of the character class in order for strptime() to work. we will not manipulate data, we will make a supplemental frame for analysis
+```{r}
+dat <- data
+dat$date <- as.character(dat$date)
+dat$date <- strptime(dat$date, "%Y-%m-%d")
+head(dat$date)
+```
+now the dates are in a good format. lets explore the other two variables.
+```{r}
+head(dat)
+```
+looking at the first 6 lines, it looks like we have a lot of NAs going on in the steps column. lets explore the steps variable a little bit more just to see what the data in that column looks like.
+```{r}
+table(dat$steps)
+```
+so we have 11014 0 values, and a varying frequency of other values. at this point in order to explore this column more, I might create buckets for steps to explore it a bit more with a historgram, but lets see what more is asked in the assingment first.
 
+###What is mean total number of steps taken per day?
+For this part of the assignment, you can ignore the missing values in the dataset.  
+-Calculate the total number of steps taken per day 
+we could use aggregate or ddply and summarise for this, I like ddply. we will use the original dataset for this section because we want date to be a factor, not as a regular date format. 
+```{r}
+library(plyr)
+sumsteps <-  ddply(data, "date", summarise, steps_per_day = sum(steps))
+head(sumsteps)
+```
+-If you do not understand the difference between a histogram and a barplot, research the difference between them. Make a histogram of the total number of steps taken each day  
+```{r}
+hist(sumsteps$steps_per_day, main = "Steps/day", xlab = "")
+```
+-Calculate and report the mean and median of the total number of steps taken per day
+we need to take out NAs in order to calculate these values, this happens with na.omit()
+```{r}
+steps_per_day <- na.omit(sumsteps$steps_per_day)
+mean(steps_per_day)
+median(steps_per_day)
+```
 
-## Imputing missing values
+###What is the average daily activity pattern?
+-Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)  
+lets, make a unique dataframe for this question, using summarise once again. we need to omit NAs in once again.
 
+```{r}
+library(plyr)
+timeseries <- ddply(dat, "interval", summarise, averagesteps = mean(na.omit(steps)))
+head(timeseries)
+plot(timeseries$interval, timeseries$averagesteps, type = "l", main="Average Steps in Time Interval", xlab = "Time Interval", ylab = "Average Steps")
+```
+-Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?  
+```{r}
+timeseries[max(timeseries$averagesteps), "interval"]
+```
 
+###Imputing missing values
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.  
+-Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)  
+```{r}
+NAframe <- data[!complete.cases(data),]
+newframe <- na.omit(data)
+nrow(data)-nrow(newframe)
+```
+-Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+I am going to use the mean for that 5-minute interval
+```{r}
+myfun <- function(x) {
+  steps <- x[,"steps"] #separates out sort column
+  rest_data <- x[,c(2,3)] #from rest of data
+  steps[which(is.na(steps)==TRUE)] = mean(steps,na.rm = T) #replaces NA values with mean of steps column
+  cbind(rest_data, steps)  #binds back together
+}
 
-## Are there differences in activity patterns between weekdays and weekends?
+replaceNA <- data
+replaceNA$interval <- as.factor(replaceNA$interval)
+
+library(plyr)
+ddplyframe <- ddply(replaceNA, "interval", myfun) #evalutes my function on datasets that are split by interval
+NAframe <- ddplyframe[ do.call(order, ddplyframe),]
+head(NAframe)
+```
+
+-Create a new dataset that is equal to the original dataset but with the missing data filled in.
+see bullet above for the creation of ddplyframe
+-Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?  
+with NA values replaced, mean=median. mean stayed the same, but the mean differs from that of the original data set.
+
+```{r}
+sumframe_replacedNA <- ddply(ddplyframe, "date", summarise, sumsteps = sum(steps))
+hist(sumframe_replacedNA$sumsteps, main = "Histogram of Total Steps Taken Per Day")
+mean(sumframe_replacedNA$sumsteps)
+median(sumframe_replacedNA$sumsteps)
+```
+
+###Are there differences in activity patterns between weekdays and weekends?
+For this part the weekdays() function may be of some help here. Use the dataset with the filled-in missing values for this part.  
+-Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.  
+we will use our NAframe
+```{r}
+NAframe$date <- as.character(dat$date)
+NAframe$date <- strptime(dat$date, "%Y-%m-%d")
+
+library(chron)
+weekend <- is.weekend(NAframe$date)
+weekend <- as.character(weekend)
+weekend[weekend=="TRUE"] <- "weekend"
+weekend[weekend=="FALSE"] <- "weekday"
+weekend <- as.factor(weekend)
+weekdayframe <- cbind(weekend, NAframe)
+weekdayframe$date <- as.character(weekdayframe$date)
+```
+-Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.  
+```{r}
+library(plyr)
+weeksplitsteps <- ddply(weekdayframe, .(weekend, interval), summarise, sumsteps = sum(steps))
+
+library(colorspace)
+library(ggplot2)
+qplot(interval, sumsteps, data = weeksplitsteps, facets = .~weekend)
+```
